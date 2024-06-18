@@ -14,7 +14,7 @@ import {
 
 import { BotCard, BotMessage } from '@/components/stocks'
 
-import { nanoid, sleep } from '@/lib/utils'
+import { nanoid, sleep, requireEnv } from '@/lib/utils'
 import { saveChat } from '@/app/actions'
 import { SpinnerMessage, UserMessage } from '@/components/stocks/message'
 import { Chat } from '../types'
@@ -27,17 +27,18 @@ import { PurchaseTickets } from '@/components/flights/purchase-ticket'
 import { CheckIcon, SpinnerIcon } from '@/components/ui/icons'
 import { format } from 'date-fns'
 import { experimental_streamText } from 'ai'
-import { google } from 'ai/google'
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { OpenAI } from 'ai/openai'
 import { z } from 'zod'
 import { ListHotels } from '@/components/hotels/list-hotels'
 import { Destinations } from '@/components/flights/destinations'
 import { Video } from '@/components/media/video'
 import { rateLimit } from './ratelimit'
 
-const genAI = new GoogleGenerativeAI(
-  process.env.GOOGLE_GENERATIVE_AI_API_KEY || ''
-)
+const provider = new OpenAI({
+  apiKey: requireEnv(`OPENROUTER_API_KEY`),
+  baseUrl: `https://openrouter.ai/api/v1`,
+  model: 'google/gemini-flash-1.5',
+})
 
 async function describeImage(imageBase64: string) {
   'use server'
@@ -62,23 +63,9 @@ async function describeImage(imageBase64: string) {
       // add your implementation here to support
       // video as input for prompts.
       if (imageBase64 === '') {
-        await new Promise(resolve => setTimeout(resolve, 5000))
-
-        text = `
-      The books in this image are:
-
-      1. The Little Prince by Antoine de Saint-Exupéry
-      2. The Prophet by Kahlil Gibran
-      3. Man's Search for Meaning by Viktor Frankl
-      4. The Alchemist by Paulo Coelho
-      5. The Kite Runner by Khaled Hosseini
-      6. To Kill a Mockingbird by Harper Lee
-      7. The Catcher in the Rye by J.D. Salinger
-      8. The Great Gatsby by F. Scott Fitzgerald
-      9. 1984 by George Orwell
-      10. Animal Farm by George Orwell
-      `
+        throw new Error(`implement video`)
       } else {
+        throw new Error(`implement image`)
         const imageData = imageBase64.split(',')[1]
 
         const model = genAI.getGenerativeModel({ model: 'gemini-pro-vision' })
@@ -111,12 +98,9 @@ async function describeImage(imageBase64: string) {
     } catch (e) {
       console.error(e)
 
-      const error = new Error(
-        'The AI got rate limited, please try again later.'
-      )
-      uiStream.error(error)
-      spinnerStream.error(error)
-      messageStream.error(error)
+      uiStream.error(e)
+      spinnerStream.error(e)
+      messageStream.error(e)
       aiState.done()
     }
   })()
@@ -162,7 +146,7 @@ async function submitUserMessage(content: string) {
   ;(async () => {
     try {
       const result = await experimental_streamText({
-        model: google.generativeAI('models/gemini-1.5-flash'),
+        model: provider.chat(),
         temperature: 0,
         tools: {
           showFlights: {
@@ -467,12 +451,9 @@ async function submitUserMessage(content: string) {
     } catch (e) {
       console.error(e)
 
-      const error = new Error(
-        'The AI got rate limited, please try again later.'
-      )
-      uiStream.error(error)
-      textStream.error(error)
-      messageStream.error(error)
+      uiStream.error(e)
+      textStream.error(e)
+      messageStream.error(e)
       aiState.done()
     }
   })()

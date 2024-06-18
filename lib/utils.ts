@@ -2,6 +2,21 @@ import { clsx, type ClassValue } from 'clsx'
 import { customAlphabet } from 'nanoid'
 import { twMerge } from 'tailwind-merge'
 
+/**
+ * Retrieves the value of an environment variable. Throws an error if the environment variable is not set.
+ * @param {string} name - The name of the environment variable.
+ * @returns {string} The value of the environment variable.
+ * @throws Will throw an error if the environment variable is not set.
+ */
+export const requireEnv = (name:string) => {
+  const value = process.env[name]
+  if (!value) {
+    throw new Error(`Missing environment variable: ${name}`)
+  }
+
+  return value
+}
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
