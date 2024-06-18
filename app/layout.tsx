@@ -7,7 +7,7 @@ import { TailwindIndicator } from '@/components/tailwind-indicator'
 import { Providers } from '@/components/providers'
 import { Header } from '@/components/header'
 import { Toaster } from '@/components/ui/sonner'
-import { KasadaClient } from '@/lib/kasada/kasada-client'
+// import { KasadaClient } from '@/lib/kasada/kasada-client'
 
 export const metadata = {
   metadataBase: new URL(process.env.VERCEL_PROJECT_PRODUCTION_URL!),
@@ -45,7 +45,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
           GeistMono.variable
         )}
       >
-        <KasadaClient />
+        {/* <KasadaClient /> */}
         <Toaster position="top-center" />
         <Providers
           attribute="class"

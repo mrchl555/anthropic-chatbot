@@ -1,6 +1,6 @@
 import { kv } from '@vercel/kv'
-import type { NextFetchEvent, NextRequest } from 'next/server'
-import { kasadaHandler } from './lib/kasada/kasada-server'
+import { NextFetchEvent, NextRequest, NextResponse } from 'next/server'
+// import { kasadaHandler } from './lib/kasada/kasada-server'
 
 const MAX_REQUESTS = 50
 
@@ -20,7 +20,8 @@ export async function middleware(req: NextRequest, ev: NextFetchEvent) {
       return new Response('Too many requests', { status: 429 })
     }
 
-    return kasadaHandler(req, ev)
+    // return kasadaHandler(req, ev)
+    return NextResponse.next()
   }
 }
 
