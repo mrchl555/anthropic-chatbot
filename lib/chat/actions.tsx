@@ -27,18 +27,14 @@ import { PurchaseTickets } from '@/components/flights/purchase-ticket'
 import { CheckIcon, SpinnerIcon } from '@/components/ui/icons'
 import { format } from 'date-fns'
 import { experimental_streamText } from 'ai'
-import { OpenAI } from 'ai/openai'
+import { anthropic } from '@ai-sdk/anthropic'
 import { z } from 'zod'
 import { ListHotels } from '@/components/hotels/list-hotels'
 import { Destinations } from '@/components/flights/destinations'
 import { Video } from '@/components/media/video'
 import { rateLimit } from './ratelimit'
 
-const provider = new OpenAI({
-  apiKey: requireEnv(`OPENROUTER_API_KEY`),
-  baseUrl: `https://openrouter.ai/api/v1`,
-  model: 'google/gemini-flash-1.5',
-})
+const model = anthropic('claude-3-haiku-20240307')
 
 async function describeImage(imageBase64: string) {
   'use server'
@@ -146,7 +142,7 @@ async function submitUserMessage(content: string) {
   ;(async () => {
     try {
       const result = await experimental_streamText({
-        model: provider.chat(),
+        model,
         temperature: 0,
         tools: {
           showFlights: {
