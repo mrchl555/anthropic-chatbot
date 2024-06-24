@@ -178,36 +178,30 @@ async function submitUserMessage(content: string) {
 
           textContent += textDelta
           messageStream.update(<BotMessage content={textContent} />)
-
-          aiState.update({
-            ...aiState.get(),
-            messages: [
-              ...aiState.get().messages,
-              {
-                id: nanoid(),
-                role: 'assistant',
-                content: textContent
-              }
-            ]
-          })
         } else if (type === 'tool-call') {
           const { toolName, args } = delta
 
-          if (toolName === 'listDestinations') {
-            tools.listDestinations.call(args, aiState, uiStream)
-          } else if (toolName === 'showFlights') {
-            tools.showFlights.call(args, aiState, uiStream)
-          } else if (toolName === 'showSeatPicker') {
-            tools.showSeatPicker.call(args, aiState, uiStream)
-          } else if (toolName === 'showHotels') {
-            tools.showHotels.call(args, aiState, uiStream)
-          } else if (toolName === 'checkoutBooking') {
-            tools.checkoutBooking.call(args, aiState, uiStream)
-          } else if (toolName === 'showBoardingPass') {
-            tools.showBoardingPass.call(args, aiState, uiStream)
-          } else if (toolName === 'showFlightStatus') {
-            tools.showFlightStatus.call(args, aiState, uiStream)
+          if (tools[toolName] === undefined) {
+            throw new Error(`No tool '${toolName}' found.`)
           }
+
+          tools[toolName].call(args, aiState, uiStream)
+        } else if (type === 'finish') {
+          if (textContent) {
+            aiState.update({
+              ...aiState.get(),
+              messages: [
+                ...aiState.get().messages,
+                {
+                  id: nanoid(),
+                  role: 'assistant',
+                  content: textContent
+                }
+              ]
+            })
+          }
+        } else {
+          throw new Error(`Unknown stream type: '${type}'`)
         }
       }
 
@@ -380,20 +374,14 @@ export const getUIStateFromAIState = (aiState: Chat) => {
       id: `${aiState.chatId}-${index}`,
       display:
         message.role === 'assistant' ? (
-          message.display?.name === 'showFlights' ? (
-            tools.showFlights.UIFromAI(message.display.props)
-          ) : message.display?.name === 'showSeatPicker' ? (
-            tools.showSeatPicker.UIFromAI(message.display.props)
-          ) : message.display?.name === 'showHotels' ? (
-            tools.showHotels.UIFromAI(message.display.props)
+          tools[message.display?.name as string] !== undefined ? (
+            tools[message.display?.name as keyof typeof tools].UIFromAI(
+              message.display.props
+            )
           ) : message.content === 'The purchase has completed successfully.' ? (
             <BotCard>
               <PurchaseTickets status="expired" />
             </BotCard>
-          ) : message.display?.name === 'showBoardingPass' ? (
-            tools.showBoardingPass.UIFromAI(message.display.props)
-          ) : message.display?.name === 'listDestinations' ? (
-            tools.listDestinations.UIFromAI(message.display.props)
           ) : (
             <BotMessage content={message.content} />
           )
