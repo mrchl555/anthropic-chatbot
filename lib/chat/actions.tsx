@@ -26,6 +26,7 @@ import { anthropic } from '@ai-sdk/anthropic'
 import { Video } from '@/components/media/video'
 import { rateLimit } from './ratelimit'
 import * as tools from './tools'
+import type { Message, AIState, UIState, AIProvider } from './types'
 
 const model = anthropic('claude-3-haiku-20240307')
 
@@ -34,7 +35,7 @@ async function describeImage(imageBase64: string) {
 
   await rateLimit()
 
-  const aiState = getMutableAIState()
+  const aiState = getMutableAIState<AIProvider>()
   const spinnerStream = createStreamableUI(null)
   const messageStream = createStreamableUI(null)
   const uiStream = createStreamableUI()
@@ -107,7 +108,7 @@ async function submitUserMessage(content: string) {
 
   await rateLimit()
 
-  const aiState = getMutableAIState()
+  const aiState = getMutableAIState<AIProvider>()
 
   aiState.update({
     ...aiState.get(),
@@ -234,7 +235,7 @@ async function submitUserMessage(content: string) {
 export async function requestCode() {
   'use server'
 
-  const aiState = getMutableAIState()
+  const aiState = getMutableAIState<AIProvider>()
 
   aiState.done({
     ...aiState.get(),
@@ -268,7 +269,7 @@ export async function requestCode() {
 export async function validateCode() {
   'use server'
 
-  const aiState = getMutableAIState()
+  const aiState = getMutableAIState<AIProvider>()
 
   const status = createStreamableValue('in_progress')
   const ui = createStreamableUI(
@@ -316,46 +317,24 @@ export async function validateCode() {
   }
 }
 
-export type Message = {
-  role: 'user' | 'assistant' | 'system' | 'function' | 'data' | 'tool'
-  content: string
-  id?: string
-  name?: string
-  display?: {
-    name: string
-    props: Record<string, any>
-  }
-}
+const actions = {
+  submitUserMessage,
+  requestCode,
+  validateCode,
+  describeImage
+} as const
 
-export type AIState = {
-  chatId: string
-  interactions?: string[]
-  messages: Message[]
-}
-
-export type UIState = {
-  id: string
-  display: React.ReactNode
-  spinner?: React.ReactNode
-  attachments?: React.ReactNode
-}[]
-
-export const AI = createAI<AIState, UIState>({
-  actions: {
-    submitUserMessage,
-    requestCode,
-    validateCode,
-    describeImage
-  },
+export const AI = createAI<AIState, UIState, typeof actions>({
+  actions,
   initialUIState: [],
   initialAIState: { chatId: nanoid(), interactions: [], messages: [] },
-  unstable_onGetUIState: async () => {
+  onGetUIState: async () => {
     'use server'
 
     const session = await auth()
 
     if (session && session.user) {
-      const aiState = getAIState()
+      const aiState = getAIState<AIProvider>()
 
       if (aiState) {
         const uiState = getUIStateFromAIState(aiState)
@@ -365,7 +344,7 @@ export const AI = createAI<AIState, UIState>({
       return
     }
   },
-  unstable_onSetAIState: async ({ state }) => {
+  onSetAIState: async ({ state }) => {
     'use server'
 
     const session = await auth()

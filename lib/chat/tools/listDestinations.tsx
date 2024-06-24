@@ -1,11 +1,11 @@
 import 'server-only'
 
 import { z } from 'zod'
-import type { Message } from 'ai'
 import { nanoid, sleep } from '@/lib/utils'
 import { BotCard, BotMessage } from '@/components/stocks'
 import { Destinations } from '@/components/flights/destinations'
-import { createStreamableUI, getMutableAIState } from 'ai/rsc'
+import { createStreamableUI } from 'ai/rsc'
+import type { MutableAIState } from '../types'
 
 export type ToolParameters = z.input<typeof definition.parameters>
 export type ToolProps = ToolParameters
@@ -25,7 +25,7 @@ export const definition = {
 
 export const call = (
   args: ToolParameters,
-  aiState: ReturnType<typeof getMutableAIState>,
+  aiState: MutableAIState,
   uiStream: ReturnType<typeof createStreamableUI>
 ) => {
   debugger
