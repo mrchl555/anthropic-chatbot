@@ -122,7 +122,7 @@ const processAIState = async (
       <>
         <SystemMessage>
           Please, allow me just one more second while I try again...
-        </SystemMessage>{' '}
+        </SystemMessage>
         <SpinnerMessage />
       </>
     )
@@ -190,6 +190,9 @@ async function processLLMRequest(
       6. Purchase booking.
       7. Show boarding pass.
       8. Show flight status.
+
+    If lacking any information, be verbal about it! No matter what, DO NOT make up data you are uncertain about. You are encoraged to ask the user for questions about their preferences.
+    DO NOT call a function that does not exist or a function with missing required parameters.
   `
 
   const history = aiState.get().messages.map(message => ({
@@ -231,6 +234,7 @@ async function handleLLMStream(
   let textContent = ''
 
   streams.spinnerStream.update(null)
+  streams.uiStream.update(null)
 
   for await (const delta of result.fullStream) {
     switch (delta.type) {
