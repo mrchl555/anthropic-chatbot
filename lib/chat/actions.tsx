@@ -186,7 +186,11 @@ async function submitUserMessage(content: string) {
           }
 
           tools[toolName].call(args, aiState, uiStream)
+        } else if (type === 'error') {
+          throw delta.error
         } else if (type === 'finish') {
+          console.log(`Finished as`, JSON.stringify(delta))
+
           if (textContent) {
             aiState.update({
               ...aiState.get(),
