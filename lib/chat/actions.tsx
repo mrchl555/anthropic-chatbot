@@ -15,7 +15,11 @@ import {
 import { BotCard, BotMessage } from '@/components/stocks'
 import { nanoid, sleep } from '@/lib/utils'
 import { saveChat } from '@/app/actions'
-import { SpinnerMessage, UserMessage } from '@/components/stocks/message'
+import {
+  SpinnerMessage,
+  UserMessage,
+  SystemMessage
+} from '@/components/stocks/message'
 import { Chat } from '../types'
 import { auth } from '@/auth'
 import { PurchaseTickets } from '@/components/flights/purchase-ticket'
@@ -103,125 +107,179 @@ async function describeImage(imageBase64: string) {
   }
 }
 
+const processAIState = async (
+  aiState: MutableAIState<AIProvider>,
+  streams: ReturnType<typeof createStreams>
+) => {
+  try {
+    await processLLMRequest(aiState, streams)
+  } catch (error) {
+    console.error('Error in LLM request:', error)
+
+    // Inform the user about the error
+    streams.uiStream.update(
+      <>
+        <SystemMessage>
+          Please, allow me just one more second while I try again...
+        </SystemMessage>{' '}
+        <SpinnerMessage />
+      </>
+    )
+
+    // Retry the LLM request with error information
+    try {
+      await processLLMRequest(aiState, streams, error)
+    } catch (retryError) {
+      console.error('Error in retry attempt:', retryError)
+      streams.uiStream.error(retryError)
+      streams.textStream.error(retryError)
+      streams.messageStream.error(retryError)
+    }
+  } finally {
+    streams.spinnerStream.done(null)
+    streams.uiStream.done()
+    streams.textStream.done()
+    streams.messageStream.done()
+    aiState.done()
+  }
+}
+
 async function submitUserMessage(content: string) {
   'use server'
 
   await rateLimit()
 
+  const streams = createStreams()
   const aiState = getMutableAIState<AIProvider>()
 
+  appendMessageToAIState(aiState, {
+    role: 'user',
+    content: [aiState.get().interactions.join('\n\n'), content]
+      .filter(Boolean)
+      .join('\n\n')
+  })
+
+  // Intentionally not awaiting this:
+  processAIState(aiState, streams)
+
+  return {
+    id: nanoid(),
+    attachments: streams.uiStream.value,
+    spinner: streams.spinnerStream.value,
+    display: streams.messageStream.value
+  }
+}
+
+const appendMessageToAIState = (
+  aiState: MutableAIState<AIProvider>,
+  newMessage: Message
+) =>
   aiState.update({
     ...aiState.get(),
     messages: [
       ...aiState.get().messages,
       {
         id: nanoid(),
-        role: 'user',
-        content: [aiState.get().interactions.join('\n\n'), content]
-          .filter(Boolean)
-          .join('\n\n')
+        ...newMessage
       }
     ]
   })
+
+const createStreams = () => ({
+  textStream: createStreamableValue(''),
+  spinnerStream: createStreamableUI(<SpinnerMessage />),
+  messageStream: createStreamableUI(null),
+  uiStream: createStreamableUI()
+})
+
+async function processLLMRequest(
+  aiState: MutableAIState<AIProvider>,
+  streams: ReturnType<typeof createStreams>,
+  previousError?: Error
+) {
+  const prompt = `\
+    You are a friendly assistant that helps the user with booking flights to destinations that are based on a list of books. You can give travel recommendations based on the books, and will continue to help the user book a flight to their destination.
+  
+    Here's the flow: 
+      1. List holiday destinations based on a collection of books.
+      2. List flights to destination.
+      3. Choose a flight.
+      4. Choose a seat.
+      5. Choose hotel
+      6. Purchase booking.
+      7. Show boarding pass.
+      8. Show flight status.
+  `
 
   const history = aiState.get().messages.map(message => ({
     role: message.role,
     content: message.content
   }))
 
-  const textStream = createStreamableValue('')
-  const spinnerStream = createStreamableUI(<SpinnerMessage />)
-  const messageStream = createStreamableUI(null)
-  const uiStream = createStreamableUI()
+  history.unshift({ role: 'system', content: prompt.trim() })
 
-  ;(async () => {
-    try {
-      const result = await streamText({
-        model,
-        temperature: 0,
-        tools: Object.fromEntries(
-          Object.entries(tools).map(([k, v]) => [k, v.definition])
-        ),
-        system: `\
-      You are a friendly assistant that helps the user with booking flights to destinations that are based on a list of books. You can give travel recommendations based on the books, and will continue to help the user book a flight to their destination.
-  
-      The date today is ${format(new Date(), 'd LLLL, yyyy')}. 
-      The user's current location is San Francisco, CA, so the departure city will be San Francisco and airport will be San Francisco International Airport (SFO). The user would like to book the flight out on May 12, 2024.
-
-      List United Airlines flights only.
-      
-      Here's the flow: 
-        1. List holiday destinations based on a collection of books.
-        2. List flights to destination.
-        3. Choose a flight.
-        4. Choose a seat.
-        5. Choose hotel
-        6. Purchase booking.
-        7. Show boarding pass.
-      `,
-        messages: [...history]
+  if (previousError) {
+    if (previousError.toolName) {
+      history.push({
+        role: 'assistant',
+        content: `Call '${previousError.toolName}' with arguments: ${previousError.toolArgs || {}}`
       })
+    }
 
-      let textContent = ''
-      spinnerStream.done(null)
+    history.push({ role: 'user', content: previousError.message })
+    history.push({ role: 'user', content: 'Do not apologize for errors' })
+  }
 
-      for await (const delta of result.fullStream) {
-        const { type } = delta
+  const result = await streamText({
+    model,
+    temperature: 0,
+    tools: Object.fromEntries(
+      Object.entries(tools).map(([k, v]) => [k, v.definition])
+    ),
+    messages: [...history]
+  })
 
-        if (type === 'text-delta') {
-          const { textDelta } = delta
+  await handleLLMStream(result, aiState, streams)
+}
 
-          textContent += textDelta
-          messageStream.update(<BotMessage content={textContent} />)
-        } else if (type === 'tool-call') {
-          const { toolName, args } = delta
+async function handleLLMStream(
+  result: any,
+  aiState: MutableAIState<AIProvider>,
+  streams: ReturnType<typeof createStreams>
+) {
+  let textContent = ''
 
-          if (tools[toolName] === undefined) {
-            throw new Error(`No tool '${toolName}' found.`)
-          }
+  streams.spinnerStream.update(null)
 
-          tools[toolName].call(args, aiState, uiStream)
-        } else if (type === 'error') {
-          throw delta.error
-        } else if (type === 'finish') {
-          console.log(`Finished as`, JSON.stringify(delta))
+  for await (const delta of result.fullStream) {
+    const { type } = delta
 
-          if (textContent) {
-            aiState.update({
-              ...aiState.get(),
-              messages: [
-                ...aiState.get().messages,
-                {
-                  id: nanoid(),
-                  role: 'assistant',
-                  content: textContent
-                }
-              ]
-            })
-          }
-        } else {
-          throw new Error(`Unknown stream type: '${type}'`)
-        }
+    if (type === 'text-delta') {
+      const { textDelta } = delta
+      textContent += textDelta
+      streams.messageStream.update(<BotMessage content={textContent} />)
+    } else if (type === 'tool-call') {
+      const { toolName, args } = delta
+
+      if (tools[toolName] === undefined) {
+        throw new Error(`No tool '${toolName}' found.`)
       }
 
-      uiStream.done()
-      textStream.done()
-      messageStream.done()
-    } catch (e) {
-      console.error(e)
+      tools[toolName].call(args, aiState, streams.uiStream)
+    } else if (type === 'error') {
+      throw delta.error
+    } else if (type === 'finish') {
+      console.log(`Finished as`, JSON.stringify(delta))
 
-      uiStream.error(e)
-      textStream.error(e)
-      messageStream.error(e)
-      aiState.done()
+      if (textContent) {
+        appendMessageToAIState(aiState, {
+          role: 'assistant',
+          content: textContent
+        })
+      }
+    } else {
+      throw new Error(`Unknown stream type: '${type}'`)
     }
-  })()
-
-  return {
-    id: nanoid(),
-    attachments: uiStream.value,
-    spinner: spinnerStream.value,
-    display: messageStream.value
   }
 }
 
