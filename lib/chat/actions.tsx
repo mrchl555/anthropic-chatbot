@@ -30,7 +30,8 @@ import { anthropic } from '@ai-sdk/anthropic'
 import { Video } from '@/components/media/video'
 import { rateLimit } from './ratelimit'
 import * as tools from './tools'
-import type { Message, AIState, UIState, AIProvider } from './types'
+import { appendMessageToAIState, createStreams } from './utils'
+import type { MutableAIState, AIState, UIState, AIProvider } from './types'
 
 const model = anthropic('claude-3-haiku-20240307')
 
@@ -108,7 +109,7 @@ async function describeImage(imageBase64: string) {
 }
 
 const processAIState = async (
-  aiState: MutableAIState<AIProvider>,
+  aiState: MutableAIState<AIState>,
   streams: ReturnType<typeof createStreams>
 ) => {
   try {
@@ -128,7 +129,7 @@ const processAIState = async (
 
     // Retry the LLM request with error information
     try {
-      await processLLMRequest(aiState, streams, error)
+      await processLLMRequest(aiState, streams, error as Error)
     } catch (retryError) {
       console.error('Error in retry attempt:', retryError)
       streams.uiStream.error(retryError)
@@ -154,7 +155,7 @@ async function submitUserMessage(content: string) {
 
   appendMessageToAIState(aiState, {
     role: 'user',
-    content: [aiState.get().interactions.join('\n\n'), content]
+    content: [(aiState.get().interactions || []).join('\n\n'), content]
       .filter(Boolean)
       .join('\n\n')
   })
@@ -170,35 +171,15 @@ async function submitUserMessage(content: string) {
   }
 }
 
-const appendMessageToAIState = (
-  aiState: MutableAIState<AIProvider>,
-  newMessage: Message
-) =>
-  aiState.update({
-    ...aiState.get(),
-    messages: [
-      ...aiState.get().messages,
-      {
-        id: nanoid(),
-        ...newMessage
-      }
-    ]
-  })
-
-const createStreams = () => ({
-  textStream: createStreamableValue(''),
-  spinnerStream: createStreamableUI(<SpinnerMessage />),
-  messageStream: createStreamableUI(null),
-  uiStream: createStreamableUI()
-})
-
 async function processLLMRequest(
-  aiState: MutableAIState<AIProvider>,
+  aiState: MutableAIState<AIState>,
   streams: ReturnType<typeof createStreams>,
   previousError?: Error
 ) {
   const prompt = `\
     You are a friendly assistant that helps the user with booking flights to destinations that are based on a list of books. You can give travel recommendations based on the books, and will continue to help the user book a flight to their destination.
+
+    The date today is ${format(new Date(), 'd LLLL, yyyy')}.
   
     Here's the flow: 
       1. List holiday destinations based on a collection of books.
@@ -244,7 +225,7 @@ async function processLLMRequest(
 
 async function handleLLMStream(
   result: any,
-  aiState: MutableAIState<AIProvider>,
+  aiState: MutableAIState<AIState>,
   streams: ReturnType<typeof createStreams>
 ) {
   let textContent = ''
