@@ -117,7 +117,9 @@ async function submitUserMessage(content: string) {
       {
         id: nanoid(),
         role: 'user',
-        content: `${aiState.get().interactions.join('\n\n')}\n\n${content}`
+        content: [aiState.get().interactions.join('\n\n'), content]
+          .filter(Boolean)
+          .join('\n\n')
       }
     ]
   })
@@ -126,7 +128,6 @@ async function submitUserMessage(content: string) {
     role: message.role,
     content: message.content
   }))
-  // console.log(history)
 
   const textStream = createStreamableValue('')
   const spinnerStream = createStreamableUI(<SpinnerMessage />)
@@ -138,17 +139,11 @@ async function submitUserMessage(content: string) {
       const result = await streamText({
         model,
         temperature: 0,
-        tools: {
-          showFlights: tools.showFlights.definition,
-          listDestinations: tools.listDestinations.definition,
-          showSeatPicker: tools.showSeatPicker.definition,
-          showHotels: tools.showHotels.definition,
-          checkoutBooking: tools.checkoutBooking.definition,
-          showBoardingPass: tools.showBoardingPass.definition,
-          showFlightStatus: tools.showFlightStatus.definition
-        },
+        tools: Object.fromEntries(
+          Object.entries(tools).map(([k, v]) => [k, v.definition])
+        ),
         system: `\
-      You are a friendly assistant that helps the user with booking flights to destinations that are based on a list of books. You can you give travel recommendations based on the books, and will continue to help the user book a flight to their destination.
+      You are a friendly assistant that helps the user with booking flights to destinations that are based on a list of books. You can give travel recommendations based on the books, and will continue to help the user book a flight to their destination.
   
       The date today is ${format(new Date(), 'd LLLL, yyyy')}. 
       The user's current location is San Francisco, CA, so the departure city will be San Francisco and airport will be San Francisco International Airport (SFO). The user would like to book the flight out on May 12, 2024.
