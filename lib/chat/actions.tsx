@@ -252,33 +252,39 @@ async function handleLLMStream(
   streams.spinnerStream.update(null)
 
   for await (const delta of result.fullStream) {
-    const { type } = delta
+    switch (delta.type) {
+      case 'text-delta':
+        const { textDelta } = delta
+        textContent += textDelta
+        streams.messageStream.update(<BotMessage content={textContent} />)
+        break
 
-    if (type === 'text-delta') {
-      const { textDelta } = delta
-      textContent += textDelta
-      streams.messageStream.update(<BotMessage content={textContent} />)
-    } else if (type === 'tool-call') {
-      const { toolName, args } = delta
+      case 'tool-call':
+        const { toolName, args } = delta
 
-      if (tools[toolName] === undefined) {
-        throw new Error(`No tool '${toolName}' found.`)
-      }
+        if (tools[toolName] === undefined) {
+          throw new Error(`No tool '${toolName}' found.`)
+        }
 
-      tools[toolName].call(args, aiState, streams.uiStream)
-    } else if (type === 'error') {
-      throw delta.error
-    } else if (type === 'finish') {
-      console.log(`Finished as`, JSON.stringify(delta))
+        tools[toolName].call(args, aiState, streams.uiStream)
+        break
 
-      if (textContent) {
-        appendMessageToAIState(aiState, {
-          role: 'assistant',
-          content: textContent
-        })
-      }
-    } else {
-      throw new Error(`Unknown stream type: '${type}'`)
+      case 'finish':
+        console.log(`Finished as`, JSON.stringify(delta))
+
+        if (textContent) {
+          appendMessageToAIState(aiState, {
+            role: 'assistant',
+            content: textContent
+          })
+        }
+        break
+
+      case 'error':
+        throw delta.error
+
+      default:
+        throw new Error(`Unknown stream type: ${delta.type}`)
     }
   }
 }
