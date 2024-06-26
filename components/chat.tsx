@@ -5,7 +5,7 @@ import { ChatPanel } from '@/components/chat-panel'
 import { EmptyScreen } from '@/components/empty-screen'
 import { ListFlights } from '@/components/flights/list-flights'
 import { ListHotels } from '@/components/hotels/list-hotels'
-import { Message } from '@/lib/chat/actions'
+import { Message } from '@/lib/chat/types'
 import { useLocalStorage } from '@/lib/hooks/use-local-storage'
 import { useScrollAnchor } from '@/lib/hooks/use-scroll-anchor'
 import { Session } from '@/lib/types'
@@ -48,7 +48,6 @@ export function Chat({ id, className, session }: ChatProps) {
   useEffect(() => {
     setNewChatId(id)
   })
-
 
   const { messagesRef, scrollRef, visibilityRef, isAtBottom, scrollToBottom } =
     useScrollAnchor()

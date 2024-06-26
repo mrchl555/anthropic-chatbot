@@ -1,8 +1,7 @@
 'use client'
 
 import { useActions, useUIState } from 'ai/rsc'
-
-import type { AI } from '@/lib/chat/actions'
+import type { AIProvider } from '@/lib/chat/types'
 
 interface Stock {
   symbol: string
@@ -11,7 +10,7 @@ interface Stock {
 }
 
 export function Stocks({ props: stocks }: { props: Stock[] }) {
-  const [, setMessages] = useUIState<typeof AI>()
+  const [, setMessages] = useUIState<AIProvider>()
   const { submitUserMessage } = useActions()
 
   return (

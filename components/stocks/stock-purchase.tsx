@@ -4,7 +4,7 @@ import { useId, useState } from 'react'
 import { useActions, useAIState, useUIState } from 'ai/rsc'
 import { formatNumber } from '@/lib/utils'
 
-import type { AI } from '@/lib/chat/actions'
+import type { AIProvider } from '@/lib/chat/types'
 
 interface Purchase {
   numberOfShares?: number
@@ -20,8 +20,8 @@ export function Purchase({
 }) {
   const [value, setValue] = useState(numberOfShares || 100)
   const [purchasingUI, setPurchasingUI] = useState<null | React.ReactNode>(null)
-  const [aiState, setAIState] = useAIState<typeof AI>()
-  const [, setMessages] = useUIState<typeof AI>()
+  const [aiState, setAIState] = useAIState<AIProvider>()
+  const [, setMessages] = useUIState<AIProvider>()
   const { confirmPurchase } = useActions()
 
   // Unique identifier for this UI component.

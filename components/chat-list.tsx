@@ -1,4 +1,4 @@
-import { UIState } from '@/lib/chat/actions'
+import type { UIState } from '@/lib/chat/types'
 import { Session } from '@/lib/types'
 import { ExclamationTriangleIcon } from '@radix-ui/react-icons'
 import Link from 'next/link'

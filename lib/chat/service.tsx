@@ -1,3 +1,5 @@
+import 'server-only'
+
 import { streamText } from 'ai'
 import { anthropic } from '@ai-sdk/anthropic'
 import { BotMessage } from '@/components/stocks'

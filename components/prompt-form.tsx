@@ -6,7 +6,7 @@ import Textarea from 'react-textarea-autosize'
 import { useActions, useUIState } from 'ai/rsc'
 
 import { UserMessage } from './stocks/message'
-import { type AI } from '@/lib/chat/actions'
+import { type AIProvider } from '@/lib/chat/types'
 import { Button } from '@/components/ui/button'
 import { IconArrowElbow, IconPlus } from '@/components/ui/icons'
 import {
@@ -28,7 +28,7 @@ export function PromptForm({
   const { formRef, onKeyDown } = useEnterSubmit()
   const inputRef = React.useRef<HTMLTextAreaElement>(null)
   const { submitUserMessage, describeImage } = useActions()
-  const [_, setMessages] = useUIState<typeof AI>()
+  const [_, setMessages] = useUIState<AIProvider>()
 
   React.useEffect(() => {
     if (inputRef.current) {
