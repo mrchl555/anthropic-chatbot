@@ -37,11 +37,9 @@ async function describeImage(imageBase64: string) {
   await rateLimit()
 
   const aiState = getMutableAIState<AIProvider>()
-  const spinnerStream = createStreamableUI(null)
-  const messageStream = createStreamableUI(null)
-  const uiStream = createStreamableUI()
+  const streams = createStreams()
 
-  uiStream.update(
+  streams.uiStream.update(
     <BotCard>
       <Video isLoading />
     </BotCard>
@@ -56,27 +54,39 @@ async function describeImage(imageBase64: string) {
       if (imageBase64 === '') {
         throw new Error(`implement video`)
       } else {
-        throw new Error(`implement image`)
-        const imageData = imageBase64.split(',')[1]
+        const [header, imageData] = imageBase64.split(',')
 
-        const model = genAI.getGenerativeModel({ model: 'gemini-pro-vision' })
-        const prompt = 'List the books in this image.'
-        const image = {
-          inlineData: {
-            data: imageData,
-            mimeType: 'image/png'
-          }
-        }
+        const result = await streamText({
+          model,
+          temperature: 0,
+          tools: Object.fromEntries(
+            Object.entries(tools).map(([k, v]) => [k, v.definition])
+          ),
+          messages: [
+            {
+              role: 'system',
+              content: 'List the books in this image.'
+            },
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'image',
+                  image: imageData,
+                  mimeType: header.split(';')[0].replace('data:', '')
+                }
+              ]
+            }
+          ]
+        })
 
-        const result = await model.generateContent([prompt, image])
-        text = result.response.text()
-        console.log(text)
+        await handleLLMStream(result, aiState, streams)
       }
 
-      spinnerStream.done(null)
-      messageStream.done(null)
+      streams.spinnerStream.done(null)
+      streams.messageStream.done(null)
 
-      uiStream.done(
+      streams.uiStream.done(
         <BotCard>
           <Video />
         </BotCard>
@@ -89,18 +99,18 @@ async function describeImage(imageBase64: string) {
     } catch (e) {
       console.error(e)
 
-      uiStream.error(e)
-      spinnerStream.error(e)
-      messageStream.error(e)
+      streams.uiStream.error(e)
+      streams.spinnerStream.error(e)
+      streams.messageStream.error(e)
       aiState.done()
     }
   })()
 
   return {
     id: nanoid(),
-    attachments: uiStream.value,
-    spinner: spinnerStream.value,
-    display: messageStream.value
+    attachments: streams.uiStream.value,
+    spinner: streams.spinnerStream.value,
+    display: streams.messageStream.value
   }
 }
 
