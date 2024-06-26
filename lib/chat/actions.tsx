@@ -1,7 +1,3 @@
-// @ts-nocheck
-
-/* eslint-disable jsx-a11y/alt-text */
-/* eslint-disable @next/next/no-img-element */
 import 'server-only'
 
 import {
@@ -112,6 +108,7 @@ const processAIState = async (
   aiState: MutableAIState<AIState>,
   streams: ReturnType<typeof createStreams>
 ) => {
+  let closed = false
   try {
     await processLLMRequest(aiState, streams)
   } catch (error) {
@@ -135,12 +132,19 @@ const processAIState = async (
       streams.uiStream.error(retryError)
       streams.textStream.error(retryError)
       streams.messageStream.error(retryError)
+      streams.spinnerStream.done(null)
+      aiState.done()
+      closed = true
     }
   } finally {
-    streams.spinnerStream.done(null)
+    if (closed) {
+      return
+    }
+
     streams.uiStream.done()
     streams.textStream.done()
     streams.messageStream.done()
+    streams.spinnerStream.done(null)
     aiState.done()
   }
 }
@@ -191,8 +195,7 @@ async function processLLMRequest(
       7. Show boarding pass.
       8. Show flight status.
 
-    If lacking any information, be verbal about it! No matter what, DO NOT make up data you are uncertain about. You are encoraged to ask the user for questions about their preferences.
-    DO NOT call a function that does not exist or a function with missing required parameters.
+    If lacking any information, be verbal about it! No matter what, DO NOT make up data you are uncertain about. Instead, you are encoraged to ask the user for questions about their preferences.
   `
 
   const history = aiState.get().messages.map(message => ({

@@ -27,7 +27,7 @@ export type UIState = {
 export type MutableAIState<T extends AIState = AIState> = {
   get: () => AIState
   update: (newState: ValueOrUpdater<AIState>) => void
-  done: ((newState: AIState) => void) | (() => void)
+  done: ((newState?: AIState) => void) | (() => void)
 }
 
 export type AIProvider = typeof AI
