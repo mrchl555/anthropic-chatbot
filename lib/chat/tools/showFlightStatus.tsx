@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { z } from 'zod'
+import { tool } from 'ai'
 import { nanoid } from '@/lib/utils'
 import { BotCard, BotMessage } from '@/components/stocks'
 import { FlightStatus } from '@/components/flights/flight-status'
@@ -12,7 +13,7 @@ export type ToolProps = {
   summary: ToolParameters
 }
 
-export const definition = {
+export const definition = tool({
   description:
     'Get the current status of imaginary flight by flight number and date.',
   parameters: z.object({
@@ -27,7 +28,7 @@ export const definition = {
     arrivalAirportCode: z.string(),
     arrivalTime: z.string()
   })
-}
+})
 
 export const call = (
   args: ToolParameters,

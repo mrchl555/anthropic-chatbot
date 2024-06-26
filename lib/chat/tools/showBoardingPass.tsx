@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { z } from 'zod'
+import { tool } from 'ai'
 import { nanoid } from '@/lib/utils'
 import { BotCard, BotMessage } from '@/components/stocks'
 import { BoardingPass } from '@/components/flights/boarding-pass'
@@ -12,7 +13,7 @@ export type ToolProps = {
   summary: ToolParameters
 }
 
-export const definition = {
+export const definition = tool({
   description: "Show user's imaginary boarding pass.",
   parameters: z.object({
     airline: z.string(),
@@ -27,15 +28,13 @@ export const definition = {
       .describe('Date of the flight, example format: 6 April, 1998'),
     gate: z.string()
   })
-}
+})
 
 export const call = (
   args: ToolParameters,
   aiState: MutableAIState,
   uiStream: ReturnType<typeof createStreamableUI>
 ) => {
-  debugger
-
   const props: ToolProps = {
     summary: args
   }

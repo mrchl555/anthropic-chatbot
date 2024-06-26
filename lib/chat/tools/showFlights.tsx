@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { z } from 'zod'
+import { tool } from 'ai'
 import { nanoid } from '@/lib/utils'
 import { BotCard, BotMessage } from '@/components/stocks'
 import { ListFlights } from '@/components/flights/list-flights'
@@ -12,7 +13,7 @@ export type ToolProps = {
   summary: ToolParameters
 }
 
-export const definition = {
+export const definition = tool({
   description:
     "List available flights in the UI. List 3 that match user's query.",
   parameters: z.object({
@@ -24,7 +25,7 @@ export const definition = {
       .string()
       .describe("Date of the user's flight, example format: 6 April, 1998")
   })
-}
+})
 
 export const call = (
   args: ToolParameters,

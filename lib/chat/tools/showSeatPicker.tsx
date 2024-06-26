@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { z } from 'zod'
+import { tool } from 'ai'
 import { nanoid } from '@/lib/utils'
 import { BotCard, BotMessage } from '@/components/stocks'
 import { SelectSeats } from '@/components/flights/select-seats'
@@ -12,7 +13,7 @@ export type ToolProps = {
   summary: ToolParameters
 }
 
-export const definition = {
+export const definition = tool({
   description: 'Show the UI to choose or change seat for the selected flight.',
   parameters: z.object({
     departingCity: z.string(),
@@ -20,15 +21,13 @@ export const definition = {
     flightCode: z.string(),
     date: z.string()
   })
-}
+})
 
 export const call = (
   args: ToolParameters,
   aiState: MutableAIState,
   uiStream: ReturnType<typeof createStreamableUI>
 ) => {
-  debugger
-
   const props: ToolProps = {
     summary: args
   }
