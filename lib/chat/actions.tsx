@@ -7,7 +7,6 @@ import {
   getAIState,
   createStreamableValue
 } from 'ai/rsc'
-
 import { BotCard, BotMessage } from '@/components/stocks'
 import { nanoid, sleep } from '@/lib/utils'
 import { saveChat } from '@/app/actions'
@@ -26,7 +25,7 @@ import { anthropic } from '@ai-sdk/anthropic'
 import { Video } from '@/components/media/video'
 import { rateLimit } from './ratelimit'
 import * as tools from './tools'
-import { appendMessageToAIState, createStreams } from './utils'
+import { appendMessageToAIState, closeStreams, createStreams } from './utils'
 import type { MutableAIState, AIState, UIState, AIProvider } from './types'
 
 const model = anthropic('claude-3-haiku-20240307')
@@ -46,8 +45,6 @@ async function describeImage(imageBase64: string) {
   )
   ;(async () => {
     try {
-      let text = ''
-
       // attachment as video for demo purposes,
       // add your implementation here to support
       // video as input for prompts.
@@ -73,37 +70,45 @@ async function describeImage(imageBase64: string) {
                 {
                   type: 'image',
                   image: imageData,
-                  mimeType: header.split(';')[0].replace('data:', '')
+                  mimeType: header.replace('data:', '').split(';')[0]
                 }
               ]
             }
           ]
         })
 
-        await handleLLMStream(result, aiState, streams)
+        await handleLLMStream(result, aiState, streams, content => {
+          if (!content) {
+            return
+          }
+
+          appendMessageToAIState(aiState, {
+            role: 'user',
+            content: 'Describe the attached image.'
+          })
+
+          appendMessageToAIState(aiState, {
+            role: 'assistant',
+            content
+          })
+        })
       }
 
-      streams.spinnerStream.done(null)
-      streams.messageStream.done(null)
-
-      streams.uiStream.done(
+      streams.uiStream.update(
         <BotCard>
           <Video />
         </BotCard>
       )
-
-      aiState.done({
-        ...aiState.get(),
-        interactions: [text]
-      })
     } catch (e) {
       console.error(e)
 
-      streams.uiStream.error(e)
-      streams.spinnerStream.error(e)
-      streams.messageStream.error(e)
+      closeStreams(streams, e as Error)
       aiState.done()
+      return
     }
+
+    closeStreams(streams)
+    aiState.done()
   })()
 
   return {
@@ -118,45 +123,42 @@ const processAIState = async (
   aiState: MutableAIState<AIState>,
   streams: ReturnType<typeof createStreams>
 ) => {
-  let closed = false
   try {
     await processLLMRequest(aiState, streams)
   } catch (error) {
     console.error('Error in LLM request:', error)
 
-    // Inform the user about the error
-    streams.uiStream.update(
-      <>
-        <SystemMessage>
-          Please, allow me just one more second while I try again...
-        </SystemMessage>
-        <SpinnerMessage />
-      </>
-    )
+    if (error.name === `AI_InvalidToolArgumentsError`) {
+      console.log(`Retrying...`)
 
-    // Retry the LLM request with error information
-    try {
-      await processLLMRequest(aiState, streams, error as Error)
-    } catch (retryError) {
-      console.error('Error in retry attempt:', retryError)
-      streams.uiStream.error(retryError)
-      streams.textStream.error(retryError)
-      streams.messageStream.error(retryError)
-      streams.spinnerStream.done(null)
+      try {
+        // Inform the user about the new attempt
+        streams.uiStream.update(
+          <>
+            <SystemMessage>
+              Please, allow me just one more second while I try again...
+            </SystemMessage>
+            <SpinnerMessage />
+          </>
+        )
+
+        // Retry the LLM request with error information
+        await processLLMRequest(aiState, streams, error as Error)
+      } catch (retryError) {
+        console.error('Error in RETRY attempt:', retryError)
+        closeStreams(streams, retryError as Error)
+        aiState.done()
+        return
+      }
+    } else {
+      closeStreams(streams, error as Error)
       aiState.done()
-      closed = true
-    }
-  } finally {
-    if (closed) {
       return
     }
-
-    streams.uiStream.done()
-    streams.textStream.done()
-    streams.messageStream.done()
-    streams.spinnerStream.done(null)
-    aiState.done()
   }
+
+  closeStreams(streams)
+  aiState.done()
 }
 
 async function submitUserMessage(content: string) {
@@ -169,9 +171,7 @@ async function submitUserMessage(content: string) {
 
   appendMessageToAIState(aiState, {
     role: 'user',
-    content: [(aiState.get().interactions || []).join('\n\n'), content]
-      .filter(Boolean)
-      .join('\n\n')
+    content
   })
 
   // Intentionally not awaiting this:
@@ -240,12 +240,25 @@ async function processLLMRequest(
 }
 
 async function handleLLMStream(
-  result: any,
+  result: Awaited<ReturnType<typeof streamText>>,
   aiState: MutableAIState<AIState>,
-  streams: ReturnType<typeof createStreams>
+  streams: ReturnType<typeof createStreams>,
+  onFinish?: (textContent: string) => void
 ) {
-  let textContent = ''
+  onFinish =
+    onFinish ||
+    (content => {
+      if (!content) {
+        return
+      }
 
+      appendMessageToAIState(aiState, {
+        role: 'assistant',
+        content
+      })
+    })
+
+  let textContent = ''
   streams.spinnerStream.update(null)
   streams.uiStream.update(null)
 
@@ -269,13 +282,7 @@ async function handleLLMStream(
 
       case 'finish':
         console.log(`Finished as`, JSON.stringify(delta))
-
-        if (textContent) {
-          appendMessageToAIState(aiState, {
-            role: 'assistant',
-            content: textContent
-          })
-        }
+        onFinish(textContent)
         break
 
       case 'error':
@@ -382,7 +389,7 @@ const actions = {
 export const AI = createAI<AIState, UIState, typeof actions>({
   actions,
   initialUIState: [],
-  initialAIState: { chatId: nanoid(), interactions: [], messages: [] },
+  initialAIState: { chatId: nanoid(), messages: [] },
   onGetUIState: async () => {
     'use server'
 

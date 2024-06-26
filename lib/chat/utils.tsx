@@ -13,6 +13,24 @@ export const createStreams = () =>
     uiStream: createStreamableUI()
   }) as const
 
+export const closeStreams = (
+  streams: ReturnType<typeof createStreams>,
+  error?: Error
+) => {
+  if (error) {
+    streams.uiStream.error(error)
+    streams.textStream.error(error)
+    streams.messageStream.error(error)
+    streams.spinnerStream.done(null)
+    return
+  }
+
+  streams.uiStream.done()
+  streams.textStream.done()
+  streams.messageStream.done()
+  streams.spinnerStream.done(null)
+}
+
 export const appendMessageToAIState = (
   aiState: MutableAIState<AIState>,
   newMessage: Message
