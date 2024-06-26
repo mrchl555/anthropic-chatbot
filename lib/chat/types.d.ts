@@ -31,3 +31,5 @@ export type MutableAIState<T extends AIState = AIState> = {
 }
 
 export type AIProvider = typeof AI
+
+export type PrepareHistory = (history: CoreMessage[]) => CoreMessage[]

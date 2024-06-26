@@ -10,35 +10,26 @@ import {
 import { BotCard, BotMessage } from '@/components/stocks'
 import { nanoid, sleep } from '@/lib/utils'
 import { saveChat } from '@/app/actions'
-import {
-  SpinnerMessage,
-  UserMessage,
-  SystemMessage
-} from '@/components/stocks/message'
+import { UserMessage } from '@/components/stocks/message'
 import { Chat } from '../types'
 import { auth } from '@/auth'
 import { PurchaseTickets } from '@/components/flights/purchase-ticket'
 import { CheckIcon, SpinnerIcon } from '@/components/ui/icons'
-import { format } from 'date-fns'
-import { streamText } from 'ai'
-import { anthropic } from '@ai-sdk/anthropic'
 import { Video } from '@/components/media/video'
 import { rateLimit } from './ratelimit'
+import * as prompts from './prompts'
 import * as tools from './tools'
-import { appendMessageToAIState, closeStreams, createStreams } from './utils'
-import type { MutableAIState, AIState, UIState, AIProvider } from './types'
-
-const model = anthropic('claude-3-haiku-20240307')
+import AIService from './service'
+import type { AIState, UIState, AIProvider } from './types'
 
 async function describeImage(imageBase64: string) {
   'use server'
 
   await rateLimit()
 
-  const aiState = getMutableAIState<AIProvider>()
-  const streams = createStreams()
+  const service: AIService = new AIService(getMutableAIState<AIProvider>())
 
-  streams.uiStream.update(
+  service.streams.ui.update(
     <BotCard>
       <Video isLoading />
     </BotCard>
@@ -53,48 +44,31 @@ async function describeImage(imageBase64: string) {
       } else {
         const [header, imageData] = imageBase64.split(',')
 
-        const result = await streamText({
-          model,
-          temperature: 0,
-          tools: Object.fromEntries(
-            Object.entries(tools).map(([k, v]) => [k, v.definition])
-          ),
-          messages: [
-            {
-              role: 'system',
-              content: 'List the books in this image.'
-            },
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'image',
-                  image: imageData,
-                  mimeType: header.replace('data:', '').split(';')[0]
-                }
-              ]
-            }
-          ]
-        })
+        const result = await service.initiateStreamText(
+          prompts.describeImage(
+            imageData,
+            header.replace('data:', '').split(';')[0]
+          )
+        )
 
-        await handleLLMStream(result, aiState, streams, content => {
+        await service.handleTextStream(result, content => {
           if (!content) {
             return
           }
 
-          appendMessageToAIState(aiState, {
+          service.appendMessage({
             role: 'user',
             content: 'Describe the attached image.'
           })
 
-          appendMessageToAIState(aiState, {
+          service.appendMessage({
             role: 'assistant',
             content
           })
         })
       }
 
-      streams.uiStream.update(
+      service.streams.ui.update(
         <BotCard>
           <Video />
         </BotCard>
@@ -102,63 +76,19 @@ async function describeImage(imageBase64: string) {
     } catch (e) {
       console.error(e)
 
-      closeStreams(streams, e as Error)
-      aiState.done()
+      service.close(e as Error)
       return
     }
 
-    closeStreams(streams)
-    aiState.done()
+    service.close()
   })()
 
   return {
     id: nanoid(),
-    attachments: streams.uiStream.value,
-    spinner: streams.spinnerStream.value,
-    display: streams.messageStream.value
+    attachments: service.streams.ui.value,
+    spinner: service.streams.spinner.value,
+    display: service.streams.message.value
   }
-}
-
-const processAIState = async (
-  aiState: MutableAIState<AIState>,
-  streams: ReturnType<typeof createStreams>
-) => {
-  try {
-    await processLLMRequest(aiState, streams)
-  } catch (error) {
-    console.error('Error in LLM request:', error)
-
-    if (error.name === `AI_InvalidToolArgumentsError`) {
-      console.log(`Retrying...`)
-
-      try {
-        // Inform the user about the new attempt
-        streams.uiStream.update(
-          <>
-            <SystemMessage>
-              Please, allow me just one more second while I try again...
-            </SystemMessage>
-            <SpinnerMessage />
-          </>
-        )
-
-        // Retry the LLM request with error information
-        await processLLMRequest(aiState, streams, error as Error)
-      } catch (retryError) {
-        console.error('Error in RETRY attempt:', retryError)
-        closeStreams(streams, retryError as Error)
-        aiState.done()
-        return
-      }
-    } else {
-      closeStreams(streams, error as Error)
-      aiState.done()
-      return
-    }
-  }
-
-  closeStreams(streams)
-  aiState.done()
 }
 
 async function submitUserMessage(content: string) {
@@ -166,131 +96,21 @@ async function submitUserMessage(content: string) {
 
   await rateLimit()
 
-  const streams = createStreams()
-  const aiState = getMutableAIState<AIProvider>()
+  const service: AIService = new AIService(getMutableAIState<AIProvider>())
 
-  appendMessageToAIState(aiState, {
+  service.appendMessage({
     role: 'user',
     content
   })
 
   // Intentionally not awaiting this:
-  processAIState(aiState, streams)
+  service.processAIState(prompts.shoppingAssistant)
 
   return {
     id: nanoid(),
-    attachments: streams.uiStream.value,
-    spinner: streams.spinnerStream.value,
-    display: streams.messageStream.value
-  }
-}
-
-async function processLLMRequest(
-  aiState: MutableAIState<AIState>,
-  streams: ReturnType<typeof createStreams>,
-  previousError?: Error
-) {
-  const prompt = `\
-    You are a friendly assistant that helps the user with booking flights to destinations that are based on a list of books. You can give travel recommendations based on the books, and will continue to help the user book a flight to their destination.
-
-    The date today is ${format(new Date(), 'd LLLL, yyyy')}.
-  
-    Here's the flow: 
-      1. List holiday destinations based on a collection of books.
-      2. List flights to destination.
-      3. Choose a flight.
-      4. Choose a seat.
-      5. Choose hotel
-      6. Purchase booking.
-      7. Show boarding pass.
-      8. Show flight status.
-
-    If lacking any information, be verbal about it! No matter what, DO NOT make up data you are uncertain about. Instead, you are encoraged to ask the user for questions about their preferences.
-  `
-
-  const history = aiState.get().messages.map(message => ({
-    role: message.role,
-    content: message.content
-  }))
-
-  history.unshift({ role: 'system', content: prompt.trim() })
-
-  if (previousError) {
-    if (previousError.toolName) {
-      history.push({
-        role: 'assistant',
-        content: `Call '${previousError.toolName}' with arguments: ${previousError.toolArgs || {}}`
-      })
-    }
-
-    history.push({ role: 'user', content: previousError.message })
-    history.push({ role: 'user', content: 'Do not apologize for errors' })
-  }
-
-  const result = await streamText({
-    model,
-    temperature: 0,
-    tools: Object.fromEntries(
-      Object.entries(tools).map(([k, v]) => [k, v.definition])
-    ),
-    messages: [...history]
-  })
-
-  await handleLLMStream(result, aiState, streams)
-}
-
-async function handleLLMStream(
-  result: Awaited<ReturnType<typeof streamText>>,
-  aiState: MutableAIState<AIState>,
-  streams: ReturnType<typeof createStreams>,
-  onFinish?: (textContent: string) => void
-) {
-  onFinish =
-    onFinish ||
-    (content => {
-      if (!content) {
-        return
-      }
-
-      appendMessageToAIState(aiState, {
-        role: 'assistant',
-        content
-      })
-    })
-
-  let textContent = ''
-  streams.spinnerStream.update(null)
-  streams.uiStream.update(null)
-
-  for await (const delta of result.fullStream) {
-    switch (delta.type) {
-      case 'text-delta':
-        const { textDelta } = delta
-        textContent += textDelta
-        streams.messageStream.update(<BotMessage content={textContent} />)
-        break
-
-      case 'tool-call':
-        const { toolName, args } = delta
-
-        if (tools[toolName] === undefined) {
-          throw new Error(`No tool '${toolName}' found.`)
-        }
-
-        tools[toolName].call(args, aiState, streams.uiStream)
-        break
-
-      case 'finish':
-        console.log(`Finished as`, JSON.stringify(delta))
-        onFinish(textContent)
-        break
-
-      case 'error':
-        throw delta.error
-
-      default:
-        throw new Error(`Unknown stream type: ${delta.type}`)
-    }
+    attachments: service.streams.ui.value,
+    spinner: service.streams.spinner.value,
+    display: service.streams.message.value
   }
 }
 

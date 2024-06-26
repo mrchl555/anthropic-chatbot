@@ -7,10 +7,10 @@ import type { MutableAIState, Message, AIState } from './types'
 
 export const createStreams = () =>
   ({
-    textStream: createStreamableValue(''),
-    spinnerStream: createStreamableUI(<SpinnerMessage />),
-    messageStream: createStreamableUI(null),
-    uiStream: createStreamableUI()
+    text: createStreamableValue(''),
+    spinner: createStreamableUI(<SpinnerMessage />),
+    message: createStreamableUI(null),
+    ui: createStreamableUI()
   }) as const
 
 export const closeStreams = (
@@ -18,17 +18,17 @@ export const closeStreams = (
   error?: Error
 ) => {
   if (error) {
-    streams.uiStream.error(error)
-    streams.textStream.error(error)
-    streams.messageStream.error(error)
-    streams.spinnerStream.done(null)
+    streams.ui.error(error)
+    streams.text.error(error)
+    streams.message.error(error)
+    streams.spinner.done(null)
     return
   }
 
-  streams.uiStream.done()
-  streams.textStream.done()
-  streams.messageStream.done()
-  streams.spinnerStream.done(null)
+  streams.ui.done()
+  streams.text.done()
+  streams.message.done()
+  streams.spinner.done(null)
 }
 
 export const appendMessageToAIState = (
